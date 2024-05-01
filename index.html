@@ -1,0 +1,252 @@
+<!doctype html>
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+	<title>Offensive Umbraco</title>
+
+	<link rel="icon"
+		href="data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20100%20100%22%3E%3Ctext%20y=%22.9em%22%20font-size=%2280%22%3E🤬%3C/text%3E%3C/svg%3E">
+
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans&amp;family=VT323&amp;display=swap">
+
+	<link rel="stylesheet" href="dist/reset.css">
+	<link rel="stylesheet" href="dist/reveal.css">
+	<link rel="stylesheet" href="dist/theme/donutsec.css">
+
+	<!-- Theme used for syntax highlighted code -->
+	<link rel="stylesheet" href="plugin/highlight/tomorrow-night.css">
+
+	<style>
+		.mono {
+			font-family: 'VT323' !important;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="reveal">
+		<div class="slides">
+			<section data-background-color="#1a242f" data-background-image="img/BG.svg" data-background-size="700px"
+				data-background-repeat="repeat" data-background-opacity="0.5">
+				<h1 class="mono">🤬<br>Offensive Umbraco</h1>
+				<p>Part 4 &#8211; Let's Get Pasted</p>
+				<small>Steven Harland</small>
+			</section>
+
+			<section>
+				<h3>whoami 👀</h3>
+				<ul>
+					<li>Offensive Security Consultant</li>
+					<li>Former Umbraco Developer</li>
+					<li>Umbraco Security Contributor</li>
+				</ul>
+			</section>
+
+			<section>
+				<h3>Security Advisories &#8211; March 2023</h3>
+				<a href="https://umbraco.com/blog/security-advisory-march-21-2023-patch-is-now-available/" target="_blank">
+					https://umbraco.com/blog/security-advisory-march-21-2023-patch-is-now-available/
+				</a>
+			</section>
+
+			<section>
+				<h3>Demo!</h3>
+				<video controls src="demo1.mkv"></video>
+			</section>
+
+			<section>
+				<h3>Vulnerable Code</h3>
+				<pre>
+					<code class="language-csharp" data-trim data-line-numbers="1-6|7|9-10|11-12|14|16-18">
+var tmpImages =
+	htmlDoc.DocumentNode.SelectNodes("//img[@data-tmpimg]");
+
+foreach (var img in tmpImages)
+{
+	var tmpImgPath = img.GetAttributeValue("data-tmpimg");
+	// tmpImgPath = "appsettings.json"
+
+	var absoluteTempImagePath =
+		_hostingEnvironment.MapPathContentRoot(tmpImgPath);
+	// absoluteTempImagePath =
+	//   "C:\inetpub\wwwroot\appsettings.json"
+
+	// absoluteTempImagePath is copied to media section...
+
+	// Delete parent folder!!
+	var folderName = Path.GetDirectoryName(absoluteTempImagePath);
+	Directory.Delete(folderName, true);
+}
+					</code>
+				</pre>
+				<a href="https://github.com/umbraco/Umbraco-CMS/blob/release-10.4.0/src/Umbraco.Infrastructure/PropertyEditors/RichTextEditorPastedImages.cs#L60" target="_blank">
+					RichTextEditorPastedImages.cs
+				</a>
+			</section>
+
+			<section>
+				<h3>First Patch</h3>
+				<pre>
+					<code class="language-csharp" data-trim data-line-numbers="8-11|19-20">
+var tmpImages =
+	htmlDoc.DocumentNode.SelectNodes("//img[@data-tmpimg]");
+
+foreach (var img in tmpImages)
+{
+	var tmpImgPath = img.GetAttributeValue("data-tmpimg");
+
+	if (IsValidPath(tmpImgPath) == false)
+	{
+		continue;
+	}
+
+	var absoluteTempImagePath =
+		_hostingEnvironment.MapPathContentRoot(tmpImgPath);
+
+	// absoluteTempImagePath is copied to media section...
+}
+
+private bool IsValidPath(string imagePath) =>
+	imagePath.StartsWith("~/umbraco/Data/TEMP/FileUploads/rte");
+					</code>
+				</pre>
+			</section>
+
+			<section>
+				<h3>Demo!</h3>
+				<video controls src="demo2.mkv"></video>
+			</section>
+
+			<section>
+				<h3>Vulnerable Code</h3>
+				<pre>
+					<code class="language-csharp" data-trim data-line-numbers="6-8|10-15|17-20">
+var tmpImages =
+	htmlDoc.DocumentNode.SelectNodes("//img[@data-tmpimg]");
+
+foreach (var img in tmpImages)
+{
+	var tmpImgPath = img.GetAttributeValue("data-tmpimg");
+	// tmpImgPath =
+	//   "~/umbraco/Data/TEMP/FileUploads/rte/../../../../../appsettings.json"
+
+	// `IsValidPath()` returns `true` because tmpImgPath starts
+	// with "~/umbraco/Data/TEMP/FileUploads/rte".
+	if (IsValidPath(tmpImgPath) == false)
+	{
+		continue;
+	}
+
+	var absoluteTempImagePath =
+		_hostingEnvironment.MapPathContentRoot(tmpImgPath);
+	// absoluteTempImagePath =
+	//   "C:\inetpub\wwwroot\appsettings.json"
+
+	// absoluteTempImagePath is copied to media section...
+}
+					</code>
+				</pre>
+			</section>
+
+			<section>
+				<h3>Second/Final Patch</h3>
+				<pre>
+					<code data-trim data-line-numbers="8-10|12-15|20-26">
+var tmpImages =
+	htmlDoc.DocumentNode.SelectNodes("//img[@data-tmpimg]");
+
+foreach (var img in tmpImages)
+{
+	var tmpImgPath = img.GetAttributeValue("data-tmpimg");
+
+	var absoluteTempImagePath =
+		Path.GetFullPath(
+			_hostingEnvironment.MapPathContentRoot(tmpImgPath));
+	
+	if (IsValidPath(absoluteTempImagePath) == false)
+	{
+		continue;
+	}
+
+	// absoluteTempImagePath is copied to media section...
+}
+
+private bool IsValidPath(string imagePath)
+{
+	var tempFolderAbsolutePath =
+		_hostingEnvironment.MapPathContentRoot(
+			"~/umbraco/Data/TEMP/FileUploads/rte");
+	return imagePath.StartsWith(tempFolderAbsolutePath);
+}
+					</code>
+				</pre>
+			</section>
+
+			<section>
+				<h3>Takeaways 🍔🍟</h3>
+				<ul>
+					<li>Avoid exposing internal file paths on the front-end of your applications</li>
+				</ul>
+				<pre>
+					<code data-trim>
+						<img data-tmpimg="f2ad5a26-868e-4c0d-b7d3-45fcd83d94a9">
+					</code>
+				</pre>
+			</section>
+
+			<section>
+				<h3>Takeaways 🍔🍟</h3>
+				<ul>
+					<li>
+						Do not pass untrusted input to <code>HostingEnvironment.MapPath</code> or <code>Server.MapPath</code>
+						<ul>
+							<li><code>~</code> is mapped to the web root directory</li>
+							<li><code>../</code> is mapped to the parent directory</li>
+						</ul>
+					</li>
+				</ul>
+			</section>
+
+			<section>
+				<h3>Takeaways 🍔🍟</h3>
+				<ul>
+					<li>Map relative paths to absolute paths before validating the path prefix</li>
+				</ul>
+			</section>
+
+			<section>
+				<h3>Takeaways 🍔🍟</h3>
+				<ul>
+					<li>Open source = good?</li>
+				</ul>
+			</section>
+
+			<section data-background-color="#1a242f" data-background-image="img/BG.svg" data-background-size="700px"
+				data-background-repeat="repeat" data-background-opacity="0.5">
+				<img class="r-frame" src="img/UmbKenny.jpg"><br>
+				<a href="https://umbracocommunity.social/@stvnhrlnd">@stvnhrlnd@umbracocommunity.social</a>
+			</section>
+		</div>
+	</div>
+
+	<script src="dist/reveal.js"></script>
+	<script src="plugin/notes/notes.js"></script>
+	<script src="plugin/markdown/markdown.js"></script>
+	<script src="plugin/highlight/highlight.js"></script>
+	<script>
+		// More info about initialization & config:
+		// - https://revealjs.com/initialization/
+		// - https://revealjs.com/config/
+		Reveal.initialize({
+			hash: true,
+
+			// Learn about plugins: https://revealjs.com/plugins/
+			plugins: [RevealMarkdown, RevealHighlight, RevealNotes]
+		});
+	</script>
+</body>
+
+</html>
